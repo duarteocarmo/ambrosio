@@ -62,7 +62,7 @@ func (p *Photo) Create() error {
 
 	hasher := sha1.New()
 	hasher.Write([]byte(p.Date))
-	p.ID = fmt.Sprintf("%x", hasher.Sum(nil))
+	p.ID = fmt.Sprintf("%x", hasher.Sum(nil))[0:10]
 
 	resp, err := http.Get(p.Url)
 	if err != nil {
