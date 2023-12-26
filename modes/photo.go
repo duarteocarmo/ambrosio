@@ -77,13 +77,6 @@ func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chat
 
 	p := storage.Photo{}
 
-	currentTime := time.Now()
-	p.Date = currentTime.Format("2006-01-02")
-
-	hasher := sha1.New()
-	hasher.Write([]byte(p.Date))
-	p.ID = fmt.Sprintf("%x", hasher.Sum(nil))
-
 	// receive photo
 	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Waiting to receive photo...")
 	for update := range updates {

@@ -3,8 +3,10 @@ package storage
 import (
 	"bytes"
 	"context"
+	"crypto/sha1"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
@@ -14,6 +16,7 @@ import (
 	"net/http"
 	"os"
 	"path"
+	"time"
 )
 
 const (
@@ -53,6 +56,13 @@ func getS3Client() *s3.Client {
 }
 
 func (p *Photo) Create() error {
+
+	currentTime := time.Now()
+	p.Date = currentTime.Format("2006-01-02")
+
+	hasher := sha1.New()
+	hasher.Write([]byte(p.Date))
+	p.ID = fmt.Sprintf("%x", hasher.Sum(nil))
 
 	resp, err := http.Get(p.Url)
 	if err != nil {
