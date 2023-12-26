@@ -10,6 +10,7 @@ import (
 )
 
 func main() {
+
 	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_APITOKEN"))
 
 	if err != nil {

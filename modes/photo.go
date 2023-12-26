@@ -1,10 +1,11 @@
 package modes
 
 import (
-	"io"
-	"log"
-	"net/http"
-	"os"
+	"crypto/sha1"
+	"duarteocarmo/ambrosio/storage"
+	"fmt"
+	"strings"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -74,68 +75,82 @@ func PhotoMode(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int
 
 func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) {
 
-	msg := tgbotapi.NewMessage(chatID, "Please send me a photo")
-	if _, err := bot.Send(msg); err != nil {
-		panic(err)
+	p := storage.Photo{}
+
+	currentTime := time.Now()
+	p.Date = currentTime.Format("2006-01-02")
+
+	hasher := sha1.New()
+	hasher.Write([]byte(p.Date))
+	p.ID = fmt.Sprintf("%x", hasher.Sum(nil))
+
+	// receive photo
+	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Waiting to receive photo...")
+	for update := range updates {
+		for update.Message.Photo == nil {
+			sendMessage(update, bot, "That's not a photo.")
+		}
+		photoURL := getPhotoDownloadUrl(update, bot)
+		p.Url = photoURL
+		sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Photo received successfully.")
+		break
 	}
 
+	// receive caption
+	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Waiting to receive caption...")
 	for update := range updates {
-
-		if update.Message.Command() == PhotoModeExit {
-			return
-		} else if update.Message.Photo != nil {
-			log.Printf("Photo: %+v\n", update.Message.Photo)
-			p := update.Message.Photo
-
-			fileID := update.Message.Photo[len(p)-1].FileID
-			file, error := bot.GetFile(tgbotapi.FileConfig{FileID: fileID})
-			if error != nil {
-				panic(error)
-			}
-
-			filePath := file.FilePath
-			downloadURL := "https://api.telegram.org/file/bot" + bot.Token + "/" + filePath
-			savePhoto(downloadURL)
-
-			sendMessage(update, bot, "File downloaded successfully.")
-			return
-
+		if strings.ToLower(update.Message.Text) == "skip" {
+			sendMessage(update, bot, "Caption will be empty.")
+		} else if update.Message.Text != "" {
+			caption := update.Message.Text
+			p.Caption = &caption
+			sendMessage(update, bot, "Caption received successfully: "+caption)
 		} else {
-			sendMessage(update, bot, "That's not a photo.")
-			log.Printf("Not a photo: %+v\n", update.Message)
-			continue
-
+			sendMessage(update, bot, "That's not a caption.")
 		}
 
+		break
 	}
+
+	// receive location
+	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Waiting to receive location...")
+	for update := range updates {
+		if strings.ToLower(update.Message.Text) == "skip" {
+			sendMessage(update, bot, "Location will be empty.")
+		} else if update.Message.Venue.Title != "" {
+			location := update.Message.Venue
+			p.Location = &location.Title
+			sendMessage(update, bot, "Location received successfully: "+location.Title)
+		} else {
+			sendMessage(update, bot, "That's not a location.")
+		}
+
+		break
+	}
+
+	err := p.Create()
+	if err != nil {
+		panic(err)
+	}
+	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Photo created successfully.")
+
+	return
 
 }
 
-func promptPhotoDescription(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) (repsponse string, ok bool) {
+func getPhotoDownloadUrl(update tgbotapi.Update, bot *tgbotapi.BotAPI) string {
+	p := update.Message.Photo
 
-	msg := tgbotapi.NewMessage(chatID, "Please send me a description")
-	if _, err := bot.Send(msg); err != nil {
-		panic(err)
+	fileID := update.Message.Photo[len(p)-1].FileID
+	file, error := bot.GetFile(tgbotapi.FileConfig{FileID: fileID})
+	if error != nil {
+		panic(error)
 	}
 
-	for update := range updates {
+	filePath := file.FilePath
+	downloadURL := "https://api.telegram.org/file/bot" + bot.Token + "/" + filePath
 
-		if update.Message.Command() == PhotoModeExit {
-			return "", false
-		} else if update.Message.Text != "" {
-			log.Printf("Description: %+v\n", update.Message.Text)
-			sendMessage(update, bot, "Description saved successfully.")
-			return update.Message.Text, true
-
-		} else {
-			sendMessage(update, bot, "That's not a description.")
-			log.Printf("Not a description: %+v\n", update.Message)
-			continue
-
-		}
-
-	}
-
+	return downloadURL
 }
 
 func sendMessage(update tgbotapi.Update, bot *tgbotapi.BotAPI, text string) {
@@ -143,24 +158,4 @@ func sendMessage(update tgbotapi.Update, bot *tgbotapi.BotAPI, text string) {
 	if _, err := bot.Send(msg); err != nil {
 		panic(err)
 	}
-}
-
-func savePhoto(url string) {
-	resp, err := http.Get(url)
-	if err != nil {
-		log.Fatalf("Failed to download file: %v\n", err)
-	}
-	defer resp.Body.Close()
-
-	out, err := os.Create("photo.png")
-	if err != nil {
-		log.Fatalf("Failed to create file on disk: %v\n", err)
-	}
-	defer out.Close()
-
-	_, err = io.Copy(out, resp.Body)
-	if err != nil {
-		log.Fatalf("Failed to write file to disk: %v\n", err)
-	}
-
 }
