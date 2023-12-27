@@ -1,11 +1,8 @@
 package modes
 
 import (
-	"crypto/sha1"
 	"duarteocarmo/ambrosio/storage"
-	"fmt"
 	"strings"
-	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
@@ -78,46 +75,60 @@ func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chat
 	p := storage.Photo{}
 
 	// receive photo
-	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Waiting to receive photo...")
+	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Please send a photo")
 	for update := range updates {
-		for update.Message.Photo == nil {
+		switch {
+		case update.Message.Photo == nil:
 			sendMessage(update, bot, "That's not a photo.")
+			continue
+		case update.Message.Text == "skip":
+			sendMessage(update, bot, "Aborting")
+			return
+		default:
+			photoURL := getPhotoDownloadUrl(update, bot)
+			p.Url = photoURL
+			sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Photo received successfully.")
+			break
 		}
-		photoURL := getPhotoDownloadUrl(update, bot)
-		p.Url = photoURL
-		sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Photo received successfully.")
 		break
 	}
 
 	// receive caption
-	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Waiting to receive caption...")
+	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Please send a caption")
 	for update := range updates {
-		if strings.ToLower(update.Message.Text) == "skip" {
+		switch {
+		case strings.ToLower(update.Message.Text) == "skip":
 			sendMessage(update, bot, "Caption will be empty.")
-		} else if update.Message.Text != "" {
+			break
+		case update.Message.Text != "":
 			caption := update.Message.Text
 			p.Caption = &caption
 			sendMessage(update, bot, "Caption received successfully: "+caption)
-		} else {
+		default:
 			sendMessage(update, bot, "That's not a caption.")
+			continue
 		}
-
 		break
 	}
 
 	// receive location
 	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Waiting to receive location...")
 	for update := range updates {
-		if strings.ToLower(update.Message.Text) == "skip" {
+		switch {
+		case update.Message.Venue != nil && update.Message.Venue.Title != "":
+			p.Location = &update.Message.Venue.Title
+		case strings.ToLower(update.Message.Text) == "skip":
 			sendMessage(update, bot, "Location will be empty.")
-		} else if update.Message.Venue.Title != "" {
-			location := update.Message.Venue
-			p.Location = &location.Title
-			sendMessage(update, bot, "Location received successfully: "+location.Title)
-		} else {
+			break
+		case update.Message.Text != "":
+			p.Location = &update.Message.Text
+		default:
 			sendMessage(update, bot, "That's not a location.")
+			continue
 		}
-
+		if p.Location != nil {
+			sendMessage(update, bot, "Location received successfully: "+*p.Location)
+		}
 		break
 	}
 

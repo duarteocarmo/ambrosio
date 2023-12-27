@@ -5,18 +5,24 @@ import (
 	"context"
 	"crypto/sha1"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"image"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"os"
 	"path"
 	"time"
+
+	_ "image/jpeg"
+	_ "image/png"
+
+	"github.com/aws/aws-sdk-go-v2/aws"
+	"github.com/aws/aws-sdk-go-v2/config"
+	"github.com/aws/aws-sdk-go-v2/credentials"
+	"github.com/aws/aws-sdk-go-v2/service/s3"
+	"github.com/chai2010/webp"
 )
 
 const (
@@ -30,6 +36,15 @@ type Photo struct {
 	Date     string
 	Caption  *string
 	Location *string
+}
+
+type ImageBytes struct {
+	Original  []byte
+	Thumbnail []byte
+}
+
+type SubImager interface {
+	SubImage(r image.Rectangle) image.Image
 }
 
 func getS3Client() *s3.Client {
@@ -58,33 +73,32 @@ func getS3Client() *s3.Client {
 func (p *Photo) Create() error {
 
 	currentTime := time.Now()
-	p.Date = currentTime.Format("2006-01-02")
+	p.Date = currentTime.Format("2006-01-02 15:04:05")
 
 	hasher := sha1.New()
 	hasher.Write([]byte(p.Date))
-	p.ID = fmt.Sprintf("%x", hasher.Sum(nil))[0:10]
+	p.ID = fmt.Sprintf("%x", hasher.Sum(nil))
 
-	resp, err := http.Get(p.Url)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return errors.New("received non-200 response code")
-	}
-	photoBytes, err := io.ReadAll(resp.Body)
+	pBytes, err := processPhoto(p)
 	if err != nil {
 		return err
 	}
 
-	fileKey := path.Base(p.ID) + ".png"
-	jsonKey := fileKey + ".json"
 	client := getS3Client()
 
 	_, err = client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(BucketName),
-		Key:    aws.String(fileKey),
-		Body:   bytes.NewReader(photoBytes),
+		Key:    aws.String(path.Base(p.ID) + ".png"),
+		Body:   bytes.NewReader(pBytes.Original),
+	})
+	if err != nil {
+		return err
+	}
+
+	_, err = client.PutObject(context.TODO(), &s3.PutObjectInput{
+		Bucket: aws.String(BucketName),
+		Key:    aws.String(path.Base(p.ID) + ".webp"),
+		Body:   bytes.NewReader(pBytes.Thumbnail),
 	})
 	if err != nil {
 		return err
@@ -107,7 +121,7 @@ func (p *Photo) Create() error {
 
 	_, err = client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(BucketName),
-		Key:    aws.String(jsonKey),
+		Key:    aws.String(path.Base(p.ID) + ".json"),
 		Body:   bytes.NewReader(jsonBytes),
 	})
 	if err != nil {
@@ -115,4 +129,62 @@ func (p *Photo) Create() error {
 	}
 
 	return nil
+
+}
+
+func processPhoto(p *Photo) (ImageBytes, error) {
+	resp, err := http.Get(p.Url)
+	if err != nil {
+		return ImageBytes{}, fmt.Errorf("failed to get photo: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return ImageBytes{}, fmt.Errorf("unexpected status code: %s", resp.Status)
+	}
+
+	photoBytes, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return ImageBytes{}, fmt.Errorf("failed to read photo body: %w", err)
+	}
+
+	img, _, err := image.Decode(bytes.NewReader(photoBytes))
+	if err != nil {
+		return ImageBytes{}, fmt.Errorf("failed to decode photo: %w", err)
+	}
+
+	// generate square thumbnail
+	bounds := img.Bounds()
+	width, height := bounds.Dx(), bounds.Dy()
+
+	squareSide := int(math.Min(float64(width), float64(height)))
+
+	startX := (width - squareSide) / 2
+	startY := (height - squareSide) / 2
+	endX := startX + squareSide
+	endY := startY + squareSide
+
+	cropSize := image.Rect(startX, startY, endX, endY)
+	croppedImage, ok := img.(interface {
+		SubImage(r image.Rectangle) image.Image
+	})
+	if !ok {
+		log.Fatal("Image does not support sub-imaging")
+	}
+	croppedImg := croppedImage.SubImage(cropSize)
+
+	var webpBytes bytes.Buffer
+	if err := webp.Encode(&webpBytes, croppedImg, &webp.Options{Lossless: false, Quality: 50, Exact: false}); err != nil {
+		return ImageBytes{}, fmt.Errorf("failed to encode photo to WebP: %w", err)
+	}
+
+	imageData := ImageBytes{
+		Original:  photoBytes,
+		Thumbnail: webpBytes.Bytes(),
+	}
+
+	log.Println("Successfully converted to WebP format")
+
+	return imageData, nil
+
 }
