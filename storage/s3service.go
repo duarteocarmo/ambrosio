@@ -70,7 +70,7 @@ func getS3Client() *s3.Client {
 	return client
 }
 
-func (p *Photo) Create() error {
+func (p *Photo) Create() (msg string, err error) {
 
 	currentTime := time.Now()
 	p.Date = currentTime.Format("2006-01-02 15:04:05")
@@ -81,7 +81,7 @@ func (p *Photo) Create() error {
 
 	pBytes, err := processPhoto(p)
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	client := getS3Client()
@@ -92,7 +92,7 @@ func (p *Photo) Create() error {
 		Body:   bytes.NewReader(pBytes.Original),
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, err = client.PutObject(context.TODO(), &s3.PutObjectInput{
@@ -101,7 +101,7 @@ func (p *Photo) Create() error {
 		Body:   bytes.NewReader(pBytes.Thumbnail),
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	jsonBytes, err := json.Marshal(struct {
@@ -116,7 +116,7 @@ func (p *Photo) Create() error {
 		ID:       p.ID,
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
 	_, err = client.PutObject(context.TODO(), &s3.PutObjectInput{
@@ -125,10 +125,12 @@ func (p *Photo) Create() error {
 		Body:   bytes.NewReader(jsonBytes),
 	})
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	return nil
+	msg = fmt.Sprintf("Created photo with ID: %s", path.Base(p.ID))
+
+	return msg, nil
 
 }
 
@@ -186,5 +188,35 @@ func processPhoto(p *Photo) (ImageBytes, error) {
 	log.Println("Successfully converted to WebP format")
 
 	return imageData, nil
+
+}
+
+func DeletePhoto(id string) (msg string, err error) {
+	client := getS3Client()
+
+	objs, err := client.ListObjectsV2(context.TODO(), &s3.ListObjectsV2Input{
+		Bucket: aws.String(BucketName),
+		Prefix: aws.String(id),
+	})
+	if err != nil {
+		return "", err
+	}
+
+	if len(objs.Contents) == 0 {
+		return "No photos found with that ID", nil
+	}
+
+	for _, obj := range objs.Contents {
+		_, delErr := client.DeleteObject(context.TODO(), &s3.DeleteObjectInput{
+			Bucket: aws.String(BucketName),
+			Key:    obj.Key,
+		})
+		if delErr != nil {
+			return "", delErr
+		}
+	}
+
+	msg = fmt.Sprintf("Deleted %d objects", len(objs.Contents))
+	return msg, nil
 
 }

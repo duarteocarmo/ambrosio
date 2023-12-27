@@ -16,11 +16,8 @@ const (
 
 var optionKeyboard = tgbotapi.NewInlineKeyboardMarkup(
 	tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData(PhotoModeEdit, PhotoModeEdit),
-		tgbotapi.NewInlineKeyboardButtonData(PhotoModeDelete, PhotoModeDelete),
-	),
-	tgbotapi.NewInlineKeyboardRow(
 		tgbotapi.NewInlineKeyboardButtonData(PhotoModeCreate, PhotoModeCreate),
+		tgbotapi.NewInlineKeyboardButtonData(PhotoModeDelete, PhotoModeDelete),
 		tgbotapi.NewInlineKeyboardButtonData(PhotoModeExit, PhotoModeExit),
 	),
 )
@@ -56,7 +53,8 @@ func PhotoMode(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int
 		case PhotoModeEdit:
 			msg.Text = "Editing photo..."
 		case PhotoModeDelete:
-			msg.Text = "Deleting photo..."
+			deletePhotoFlow(updates, bot, chatID)
+			return
 		case PhotoModeExit:
 			msg.Text = "Exiting photo mode..."
 			bot.Send(msg)
@@ -68,6 +66,33 @@ func PhotoMode(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int
 			panic(err)
 		}
 	}
+}
+
+func deletePhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) {
+
+	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Please send the photo ID to delete")
+	for update := range updates {
+		switch {
+		case strings.ToLower(update.Message.Text) == "skip":
+			sendMessage(update, bot, "Aborting")
+			return
+		case update.Message.Text != "":
+			id := update.Message.Text
+			msg, err := storage.DeletePhoto(id)
+			if err != nil {
+				sendMessage(update, bot, "Error deleting photo: "+err.Error())
+				continue
+			}
+			sendMessage(update, bot, msg)
+			break
+
+		default:
+			sendMessage(update, bot, "That's not a valid ID.")
+			continue
+		}
+		break
+	}
+
 }
 
 func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) {
@@ -132,11 +157,11 @@ func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chat
 		break
 	}
 
-	err := p.Create()
+	msg, err := p.Create()
 	if err != nil {
 		panic(err)
 	}
-	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Photo created successfully.")
+	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, msg)
 
 	return
 
