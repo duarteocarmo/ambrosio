@@ -88,7 +88,7 @@ func (p *Photo) Create() (msg string, err error) {
 
 	_, err = client.PutObject(context.TODO(), &s3.PutObjectInput{
 		Bucket: aws.String(BucketName),
-		Key:    aws.String(path.Base(p.ID) + ".png"),
+		Key:    aws.String(path.Base(p.ID) + ".jpg"),
 		Body:   bytes.NewReader(pBytes.Original),
 	})
 	if err != nil {

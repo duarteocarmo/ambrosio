@@ -1,3 +1,5 @@
 .env
 ambrosio
 *.env
+others/
+.DS_Store

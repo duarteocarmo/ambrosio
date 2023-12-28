@@ -18,13 +18,30 @@ const (
 
 func main() {
 
-	bot, err := tgbotapi.NewBotAPI(os.Getenv("TELEGRAM_APITOKEN"))
+	m := os.Getenv("MODE")
+	t := ""
+	d := false
+	switch m {
+	case "DEV":
+		log.Println("Running in DEV mode")
+		t = os.Getenv("TELEGRAM_APITOKEN_DEV")
+		d = true
+	case "PROD":
+		log.Println("Running in PROD mode")
+		t = os.Getenv("TELEGRAM_APITOKEN_PROD")
+		d = false
+	default:
+		log.Println("No mode specified. Exiting...")
+		return
+	}
+
+	bot, err := tgbotapi.NewBotAPI(t)
 
 	if err != nil {
 		log.Panic(err)
 	}
 
-	bot.Debug = os.Getenv("DEBUG") == "true"
+	bot.Debug = d
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
 
