@@ -45,6 +45,7 @@ jobs:
         username: ${{ secrets.USERNAME }}
         password: ${{ secrets.PASSWORD }}
         port: 22
+        envs: TELEGRAM_APITOKEN_PROD,TELEGRAM_USERNAME,MODE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,BUCKET_URL
         script: |
           cd ${{ env.PROJECT_PATH }}  
           docker compose down
