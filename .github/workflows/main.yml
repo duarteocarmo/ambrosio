@@ -8,6 +8,9 @@ on:
       - "README.md"
   workflow_dispatch:
 
+env:
+  PROJECT_PATH: /root/projects/ambrosio
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,7 +29,7 @@ jobs:
         port: 22
         overwrite: true
         source: "."
-        target: "/root/projects/ambrosio"
+        target: ${{ env.PROJECT_PATH }}
 
     - uses: appleboy/ssh-action@master
       name: start docker container as deamon 
@@ -43,7 +46,8 @@ jobs:
         password: ${{ secrets.PASSWORD }}
         port: 22
         script: |
-          cd projects/tiger-bot  
+          cd ${{ env.PROJECT_PATH }}  
           docker compose down
           docker compose up --force-recreate --build -d
           docker ps
+
