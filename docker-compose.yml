@@ -1,0 +1,13 @@
+version: "3.7"
+
+services:
+  tiger:
+    build: .
+    restart: always
+    environment:
+      - TELEGRAM_APITOKEN_PROD=${TELEGRAM_APITOKEN_PROD}
+      - MODE=${MODE}
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - TELEGRAM_USERNAME=${TELEGRAM_USERNAME}
+      - BUCKET_URL=${BUCKET_URL}

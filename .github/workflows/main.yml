@@ -1,0 +1,49 @@
+name: Deploy
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "README.md"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout source code
+      uses: actions/checkout@v1
+
+    - uses: actions/checkout@master
+    - name: copy directory to server
+      uses: appleboy/scp-action@master
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        password: ${{ secrets.PASSWORD }}
+        port: 22
+        overwrite: true
+        source: "."
+        target: "/root/projects/ambrosio"
+
+    - uses: appleboy/ssh-action@master
+      name: start docker container as deamon 
+      env:
+        TELEGRAM_APITOKEN_PROD: ${{ secrets.TELEGRAM_APITOKEN_PROD }}
+        TELEGRAM_USERNAME: ${{ secrets.TELEGRAM_USERNAME }}
+        MODE: ${{ secrets.MODE }}
+        AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+        BUCKET_URL: ${{ secrets.BUCKET_URL }}
+      with:
+        host: ${{ secrets.HOST }}
+        username: ${{ secrets.USERNAME }}
+        password: ${{ secrets.PASSWORD }}
+        port: 22
+        script: |
+          cd projects/tiger-bot  
+          docker compose down
+          docker compose up --force-recreate --build -d
+          docker ps
