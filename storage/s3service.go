@@ -129,6 +129,7 @@ func (p *Photo) Create() (msg string, err error) {
 	}
 
 	msg = fmt.Sprintf("Created photo with ID: %s", path.Base(p.ID))
+	triggerDeployment()
 
 	return msg, nil
 
@@ -217,6 +218,18 @@ func DeletePhoto(id string) (msg string, err error) {
 	}
 
 	msg = fmt.Sprintf("Deleted %d objects", len(objs.Contents))
+	triggerDeployment()
 	return msg, nil
 
+}
+
+func triggerDeployment() {
+	url := os.Getenv("WEBSITE_HOOK")
+	resp, err := http.Post(url, "application/json", nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer resp.Body.Close()
+
+	log.Println("Response status:", resp.Status)
 }

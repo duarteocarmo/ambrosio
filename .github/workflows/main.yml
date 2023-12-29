@@ -40,6 +40,7 @@ jobs:
         AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
         BUCKET_URL: ${{ secrets.BUCKET_URL }}
+        WEBSITE_HOOK: ${{ secrets.WEBSITE_HOOK }}
       with:
         host: ${{ secrets.HOST }}
         username: ${{ secrets.USERNAME }}
