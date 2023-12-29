@@ -1,7 +1,7 @@
 version: "3.7"
 
 services:
-  tiger:
+  ambrosio:
     build: .
     restart: always
     environment:
