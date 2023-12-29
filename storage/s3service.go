@@ -182,7 +182,7 @@ func processPhoto(p *Photo) (ImageBytes, error) {
 	croppedImg := croppedImage.SubImage(cropSize)
 
 	var webpBytes bytes.Buffer
-	if err := webp.Encode(&webpBytes, croppedImg, &webp.Options{Lossless: false, Quality: 50, Exact: false}); err != nil {
+	if err := webp.Encode(&webpBytes, croppedImg, &webp.Options{Lossless: false, Quality: 30, Exact: false}); err != nil {
 		return ImageBytes{}, fmt.Errorf("failed to encode photo to WebP: %w", err)
 	}
 
