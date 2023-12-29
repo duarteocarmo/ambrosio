@@ -16,8 +16,4 @@ RUN set -x && apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -
 
 COPY --from=builder /app/ambrosio /app/ambrosio
 
-# Run the web service on container startup.
 CMD ["/app/ambrosio"]
-
-# [END run_helloworld_dockerfile]
-# [END cloudrun_helloworld_dockerfile]
