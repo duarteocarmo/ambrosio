@@ -63,7 +63,7 @@ func main() {
 	authorizedUser := os.Getenv("TELEGRAM_USERNAME")
 
 	availableModes := []string{PhotoMode, AssistantMode}
-	helpMsg := fmt.Sprintf("I don't know that command. Available commands are: \n /%s", strings.Join(availableModes, "\n"))
+	helpMsg := "I don't know that command. Available commands are: \n/" + strings.Join(availableModes, "\n/")
 
 	for update := range updates {
 
