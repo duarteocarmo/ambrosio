@@ -54,20 +54,14 @@ func getS3Client() *s3.Client {
 
 	r2Resolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
 		return aws.Endpoint{
-			URL:               bucketUrl,
-			HostnameImmutable: true,
-			Source:            aws.EndpointSourceCustom,
+			URL: bucketUrl,
 		}, nil
 	})
 
 	cfg, err := config.LoadDefaultConfig(context.TODO(),
 		config.WithEndpointResolverWithOptions(r2Resolver),
 		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKeyId, accessKeySecret, "")),
-		config.WithRegion("auto"),
 	)
-	if err != nil {
-		log.Fatal(err)
-	}
 
 	if err != nil {
 		log.Fatal(err)
