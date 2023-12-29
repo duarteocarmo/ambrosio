@@ -2,6 +2,8 @@ package modes
 
 import (
 	"duarteocarmo/ambrosio/storage"
+	"fmt"
+	"log"
 	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
@@ -9,93 +11,77 @@ import (
 
 const (
 	PhotoModeCreate = "create"
-	PhotoModeEdit   = "edit"
 	PhotoModeDelete = "delete"
 	PhotoModeExit   = "exit"
 )
 
-var optionKeyboard = tgbotapi.NewInlineKeyboardMarkup(
-	tgbotapi.NewInlineKeyboardRow(
-		tgbotapi.NewInlineKeyboardButtonData(PhotoModeCreate, PhotoModeCreate),
-		tgbotapi.NewInlineKeyboardButtonData(PhotoModeDelete, PhotoModeDelete),
-		tgbotapi.NewInlineKeyboardButtonData(PhotoModeExit, PhotoModeExit),
-	),
-)
+func PhotoMode(currentUpdate tgbotapi.Update, updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI) error {
 
-func PhotoMode(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) {
+	chatID := currentUpdate.Message.Chat.ID
 
-	msg := tgbotapi.NewMessage(chatID, "Photo mode")
-	msg.ReplyMarkup = optionKeyboard
-
-	if _, err := bot.Send(msg); err != nil {
-		panic(err)
+	if currentUpdate.Message == nil || currentUpdate.Message.Text == "" {
+		return fmt.Errorf("the update does not contain a message or text")
 	}
 
-	for update := range updates {
-
-		if update.CallbackQuery == nil {
-			msg := tgbotapi.NewMessage(update.Message.Chat.ID, "Select an option")
-			msg.ReplyMarkup = optionKeyboard
-
-			if _, err := bot.Send(msg); err != nil {
-				panic(err)
-			}
-			continue
-		}
-
-		msg := tgbotapi.NewMessage(update.CallbackQuery.Message.Chat.ID, "")
-		action := update.CallbackQuery.Data
-
-		switch action {
-		case PhotoModeCreate:
-			createPhotoFlow(updates, bot, chatID)
-			return
-		case PhotoModeEdit:
-			msg.Text = "Editing photo..."
-		case PhotoModeDelete:
-			deletePhotoFlow(updates, bot, chatID)
-			return
-		case PhotoModeExit:
-			msg.Text = "Exiting photo mode..."
-			bot.Send(msg)
-			return
-		default:
-			msg.Text = "Unknown command"
-		}
-		if _, err := bot.Send(msg); err != nil {
-			panic(err)
-		}
+	textParts := strings.Split(currentUpdate.Message.Text, " ")
+	if len(textParts) <= 1 {
+		return fmt.Errorf("No action specified in the message text")
 	}
+
+	selectedAction := textParts[1]
+	log.Printf("Selected action: %s", selectedAction)
+
+	switch selectedAction {
+	case PhotoModeCreate:
+		err := createPhotoFlow(updates, bot, chatID)
+		if err != nil {
+			return fmt.Errorf("error creating photo: %v", err)
+		}
+		return nil
+
+	case PhotoModeDelete:
+		deletePhotoFlow(updates, bot, chatID)
+		return nil
+
+	default:
+		msg := tgbotapi.NewMessage(chatID, "Unknown command, please try again")
+		bot.Send(msg)
+		return nil
+	}
+
 }
 
-func deletePhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) {
+func deletePhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) error {
 
 	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Please send the photo ID to delete")
+
 	for update := range updates {
 		switch {
-		case strings.ToLower(update.Message.Text) == "skip":
+
+		case strings.ToLower(update.Message.Text) == PhotoModeExit:
 			sendMessage(update, bot, "Aborting")
-			return
+			return nil
+
 		case update.Message.Text != "":
 			id := update.Message.Text
 			msg, err := storage.DeletePhoto(id)
 			if err != nil {
-				sendMessage(update, bot, "Error deleting photo: "+err.Error())
-				continue
+				return fmt.Errorf("error deleting photo: %v", err)
 			}
 			sendMessage(update, bot, msg)
-			break
+			return nil
 
 		default:
 			sendMessage(update, bot, "That's not a valid ID.")
-			continue
+			return fmt.Errorf("invalid ID")
 		}
-		break
 	}
+
+	return nil
 
 }
 
-func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) {
+func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int64) error {
 
 	p := storage.Photo{}
 
@@ -103,12 +89,12 @@ func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chat
 	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Please send a photo")
 	for update := range updates {
 		switch {
+		case strings.ToLower(update.Message.Text) == PhotoModeExit:
+			sendMessage(update, bot, "Aborting")
+			return nil
 		case update.Message.Photo == nil:
 			sendMessage(update, bot, "That's not a photo.")
 			continue
-		case update.Message.Text == "skip":
-			sendMessage(update, bot, "Aborting")
-			return
 		default:
 			photoURL := getPhotoDownloadUrl(update, bot)
 			p.Url = photoURL
@@ -122,6 +108,9 @@ func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chat
 	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Please send a caption")
 	for update := range updates {
 		switch {
+		case strings.ToLower(update.Message.Text) == PhotoModeExit:
+			sendMessage(update, bot, "Aborting")
+			return nil
 		case strings.ToLower(update.Message.Text) == "skip":
 			sendMessage(update, bot, "Caption will be empty.")
 			break
@@ -140,6 +129,9 @@ func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chat
 	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, "Waiting to receive location...")
 	for update := range updates {
 		switch {
+		case strings.ToLower(update.Message.Text) == PhotoModeExit:
+			sendMessage(update, bot, "Aborting")
+			return nil
 		case update.Message.Venue != nil && update.Message.Venue.Title != "":
 			p.Location = &update.Message.Venue.Title
 		case strings.ToLower(update.Message.Text) == "skip":
@@ -163,7 +155,7 @@ func createPhotoFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chat
 	}
 	sendMessage(tgbotapi.Update{Message: &tgbotapi.Message{Chat: &tgbotapi.Chat{ID: chatID}}}, bot, msg)
 
-	return
+	return nil
 
 }
 

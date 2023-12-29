@@ -14,41 +14,54 @@ import (
 const (
 	PhotoMode     = "photo"
 	AssistantMode = "assistant"
+	Timeout       = 60
 )
 
-func main() {
-
+func createBot() (*tgbotapi.BotAPI, error) {
 	m := os.Getenv("MODE")
 	t := ""
 	d := false
+
 	switch m {
 	case "DEV":
-		log.Println("Running in DEV mode")
 		t = os.Getenv("TELEGRAM_APITOKEN_DEV")
 		d = true
+		log.Println("Running in DEV mode")
 	case "PROD":
-		log.Println("Running in PROD mode")
 		t = os.Getenv("TELEGRAM_APITOKEN_PROD")
 		d = false
+		log.Println("Running in PROD mode")
 	default:
 		log.Println("No mode specified. Exiting...")
-		return
+		return nil, fmt.Errorf("no mode specified")
 	}
 
 	bot, err := tgbotapi.NewBotAPI(t)
 
 	if err != nil {
-		log.Panic(err)
+		return nil, fmt.Errorf("error creating bot: %v", err)
 	}
 
 	bot.Debug = d
 
 	log.Printf("Authorized on account %s", bot.Self.UserName)
+	log.Printf("Bot is running")
+
+	return bot, nil
+
+}
+
+func main() {
+	bot, err := createBot()
+	if err != nil {
+		log.Panicf("Error creating bot: %v", err)
+	}
 
 	u := tgbotapi.NewUpdate(0)
-	u.Timeout = 60
-
+	u.Timeout = Timeout
 	updates := bot.GetUpdatesChan(u)
+	authorizedUser := os.Getenv("TELEGRAM_USERNAME")
+
 	availableModes := []string{PhotoMode, AssistantMode}
 	helpMsg := fmt.Sprintf("I don't know that command. Available commands are: \n /%s", strings.Join(availableModes, "\n"))
 
@@ -58,13 +71,12 @@ func main() {
 			continue
 		}
 
-		chatID := update.Message.Chat.ID
 		msg := tgbotapi.NewMessage(update.Message.Chat.ID, "")
 
-		if update.SentFrom().UserName != os.Getenv("TELEGRAM_USERNAME") {
-			msg.Text = "You are not authorized to use this bot"
+		if update.SentFrom().UserName != authorizedUser {
+			msg.Text = "Sorry, you are not authorized to use this bot"
 			bot.Send(msg)
-			log.Printf("Unauthorized user %s", update.SentFrom().UserName)
+			log.Printf("Detected unauthorized user %s", update.SentFrom().UserName)
 			continue
 		}
 
@@ -75,22 +87,24 @@ func main() {
 		}
 
 		switch update.Message.Command() {
-
 		case PhotoMode:
-			msg.Text = "Entering photo mode..."
-			bot.Send(msg)
-			modes.PhotoMode(updates, bot, chatID)
+			err := modes.PhotoMode(update, updates, bot)
+			if err != nil {
+				log.Printf("Error in photo mode: %v", err)
+				msg.Text = fmt.Sprintf("Error in photo mode: %v", err)
+				bot.Send(msg)
+			}
 			continue
 		case AssistantMode:
 			msg.Text = "Placeholder for the assistant mode"
-
+			// TODO: Implement assistant mode
 		default:
 			msg.Text = helpMsg
 
 		}
 
 		if _, err := bot.Send(msg); err != nil {
-			log.Panic(err)
+			log.Panicf("Error sending message: %v", err)
 		}
 	}
 }
