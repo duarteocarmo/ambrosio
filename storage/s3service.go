@@ -55,6 +55,7 @@ func getS3Client() *s3.Client {
 	r2Resolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
 		return aws.Endpoint{
 			URL: bucketUrl,
+			SigningRegion: "us-east-1",
 		}, nil
 	})
 
