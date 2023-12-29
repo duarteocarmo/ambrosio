@@ -49,6 +49,7 @@ jobs:
         envs: TELEGRAM_APITOKEN_PROD,TELEGRAM_USERNAME,MODE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,BUCKET_URL,WEBSITE_HOOK
         script: |
           cd ${{ env.PROJECT_PATH }}  
+          env
           docker compose down
           docker compose rm -f
           docker compose build --no-cache
