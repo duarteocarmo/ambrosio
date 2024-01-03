@@ -96,8 +96,13 @@ func main() {
 			}
 			continue
 		case AssistantMode:
-			msg.Text = "Placeholder for the assistant mode"
-			// TODO: Implement assistant mode
+			err := modes.AssistantMode(update, updates, bot)
+			if err != nil {
+				log.Printf("Error in assistant mode: %v", err)
+				msg.Text = fmt.Sprintf("Error in assistant mode: %v", err)
+				bot.Send(msg)
+			}
+			continue
 		default:
 			msg.Text = helpMsg
 
