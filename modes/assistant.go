@@ -2,9 +2,10 @@ package modes
 
 import (
 	"bytes"
+	"duarteocarmo/ambrosio/model"
 	"encoding/json"
-	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -13,10 +14,31 @@ import (
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 )
 
+const (
+	TogetherEndpoint = "https://api.together.xyz/inference"
+	ModelID          = "mistralai/Mixtral-8x7B-Instruct-v0.1"
+)
+
+type APIResponse struct {
+	Output struct {
+		Choices []struct {
+			Text string `json:"text"`
+		} `json:"choices"`
+	} `json:"output"`
+}
+
 func AssistantMode(currentUpdate tgbotapi.Update, updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI) error {
 
 	chatID := currentUpdate.Message.Chat.ID
 	bot.Send(tgbotapi.NewMessage(chatID, "Assistant mode activated."))
+
+	systemPrompt, err := model.LoadPromptFromFile("system")
+	if err != nil {
+		return err
+	}
+
+	promptStart := "<s> [INST] %s [/INST]"
+	prompt := fmt.Sprintf(promptStart, systemPrompt)
 
 	for update := range updates {
 
@@ -32,15 +54,17 @@ func AssistantMode(currentUpdate tgbotapi.Update, updates tgbotapi.UpdatesChanne
 			return nil
 		}
 
-		// prompt := fmt.Sprintf("GPT4 User: %s<|end_of_turn|>GPT4 Assistant:", messageText)
-		prompt := fmt.Sprintf("Instruct: %s\nOutput:", messageText)
+		if strings.ToLower(messageText) == "reset" {
+			prompt = fmt.Sprintf(promptStart, systemPrompt)
+			bot.Send(tgbotapi.NewMessage(chatID, "* Prompt reset *"))
+			continue
+		}
+
+		prompt += fmt.Sprintf("%s [/INST]", messageText)
 
 		response, err := makeRequest(
 			prompt,
-			250,
-			0.0,
-			false,
-			[]string{},
+			ModelID,
 			false,
 		)
 
@@ -48,6 +72,8 @@ func AssistantMode(currentUpdate tgbotapi.Update, updates tgbotapi.UpdatesChanne
 			bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("Error: %v", err)))
 		} else {
 			bot.Send(tgbotapi.NewMessage(chatID, response))
+			prompt += fmt.Sprintf(" %s</s>", response)
+
 		}
 
 	}
@@ -57,38 +83,53 @@ func AssistantMode(currentUpdate tgbotapi.Update, updates tgbotapi.UpdatesChanne
 
 func makeRequest(
 	prompt string,
-	nPredict int,
-	temperature float64,
-	stream bool,
-	stop []string,
-	ignoreEos bool,
+	modelID string,
+	streamTokens bool,
 ) (string, error) {
 
-	endpoint := os.Getenv("COMPLETION_ENDPOINT")
-	if endpoint == "" {
-		return "", errors.New("COMPLETION_ENDPOINT not set")
+	defaultURL := TogetherEndpoint
+	maxTokens := 512
+	temperature := 0.0
+	topP := 0.7
+	topK := 50
+	repetitionPenalty := 1.0
+	apiKey := os.Getenv("TOGETHER_API_KEY")
+	stop := []string{"</s>", "[INST]"}
+
+	// negativePrompt := ""
+	// requestType := "language-model-inference"
+
+	if apiKey == "" {
+		return "", fmt.Errorf("TOGETHER_API_KEY environment variable not set")
 	}
 
-	defaultURL := fmt.Sprintf("%s/completion", endpoint)
 	payload := map[string]interface{}{
-		"prompt":      prompt,
-		"n_predict":   nPredict,
-		"temperature": temperature,
-		"stream":      stream,
-		"stop":        stop,
-		"ignore_eos":  ignoreEos,
+		"model":              modelID,
+		"prompt":             prompt,
+		"temperature":        temperature,
+		"top_p":              topP,
+		"top_k":              topK,
+		"max_tokens":         maxTokens,
+		"repetition_penalty": repetitionPenalty,
+		"stop":               stop,
+
+		// "stream_tokens":      streamTokens,
+		// "negative_prompt":    negativePrompt,
+		// "sessionKey":         sessionKey,
 	}
 	bytesPayload, err := json.Marshal(payload)
+
 	if err != nil {
 		return "", err
 	}
 
-	log.Printf("Request payload: %s", payload)
+	log.Printf("Request payload: %s", string(bytesPayload))
 
 	req, err := http.NewRequest("POST", defaultURL, bytes.NewReader(bytesPayload))
 	if err != nil {
 		return "", err
 	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -98,21 +139,23 @@ func makeRequest(
 	}
 	defer resp.Body.Close()
 
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("request failed: %s", resp.Status)
-	}
-
-	var respPayload map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&respPayload); err != nil {
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
 		return "", err
 	}
 
-	log.Printf("Response payload: %v", respPayload)
+	log.Printf("Response body: %s", string(body))
 
-	content, ok := respPayload["content"].(string)
-	if !ok {
-		return "", errors.New("invalid response format")
+	var apiResponse APIResponse
+	err = json.Unmarshal(body, &apiResponse)
+	if err != nil {
+		return "", err
 	}
 
-	return content, nil
+	if len(apiResponse.Output.Choices) > 0 {
+		return apiResponse.Output.Choices[0].Text, nil
+	}
+
+	return "", fmt.Errorf("no choices found in the response")
+
 }
