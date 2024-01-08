@@ -71,7 +71,9 @@ func AssistantMode(currentUpdate tgbotapi.Update, updates tgbotapi.UpdatesChanne
 		if err != nil {
 			bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("Error: %v", err)))
 		} else {
-			bot.Send(tgbotapi.NewMessage(chatID, response))
+			msg := tgbotapi.NewMessage(chatID, response)
+			msg.ParseMode = "Markdown"
+			bot.Send(msg)
 			prompt += fmt.Sprintf(" %s</s>", response)
 
 		}
