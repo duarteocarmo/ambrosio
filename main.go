@@ -87,7 +87,7 @@ func main() {
 		}
 
 		switch update.Message.Command() {
-		case PhotoMode:
+		case PhotoMode, strings.ToLower(PhotoMode)[0:1]:
 			err := modes.PhotoMode(update, updates, bot)
 			if err != nil {
 				log.Printf("Error in photo mode: %v", err)
@@ -95,7 +95,7 @@ func main() {
 				bot.Send(msg)
 			}
 			continue
-		case AssistantMode:
+		case AssistantMode, strings.ToLower(AssistantMode)[0:1]:
 			err := modes.AssistantMode(update, updates, bot)
 			if err != nil {
 				log.Printf("Error in assistant mode: %v", err)

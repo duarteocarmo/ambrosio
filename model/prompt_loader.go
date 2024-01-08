@@ -14,4 +14,3 @@ func LoadPromptFromFile(filename string) (string, error) {
 	}
 	return string(bytes), nil
 }
-
