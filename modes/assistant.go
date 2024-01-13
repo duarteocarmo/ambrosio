@@ -93,8 +93,10 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 		return err
 	}
 
-	promptStart := "<s> [INST] %s [/INST]"
-	prompt := fmt.Sprintf(promptStart, systemPrompt)
+	bosToken := "<s>"
+	eosToken := "</s>"
+	promptStart := "%s [INST] %s "
+	prompt := fmt.Sprintf(promptStart, bosToken, systemPrompt)
 
 	for update := range updates {
 
@@ -111,7 +113,7 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 		}
 
 		if strings.ToLower(messageText) == ResetCommand {
-			prompt = fmt.Sprintf(promptStart, systemPrompt)
+			prompt = fmt.Sprintf(promptStart, bosToken, systemPrompt)
 			bot.Send(tgbotapi.NewMessage(chatID, "* Prompt reset *"))
 			continue
 		}
@@ -132,7 +134,7 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 			msg := tgbotapi.NewMessage(chatID, response)
 			msg.ParseMode = "Markdown"
 			bot.Send(msg)
-			prompt += fmt.Sprintf(" %s</s>", response)
+			prompt += fmt.Sprintf(" %s%s", response, eosToken)
 
 		}
 
