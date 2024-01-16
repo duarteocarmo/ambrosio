@@ -95,7 +95,7 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 
 	bosToken := "<s>"
 	eosToken := "</s>"
-	promptStart := "%s [INST] %s "
+	promptStart := "%s[INST] %s"
 	prompt := fmt.Sprintf(promptStart, bosToken, systemPrompt)
 
 	for update := range updates {
@@ -118,7 +118,7 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 			continue
 		}
 
-		prompt += fmt.Sprintf("%s [/INST]", messageText)
+		prompt += fmt.Sprintf(" %s [/INST]", messageText)
 
 		bot.Send(tgbotapi.NewChatAction(chatID, "typing"))
 
@@ -134,9 +134,11 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 			msg := tgbotapi.NewMessage(chatID, response)
 			msg.ParseMode = "Markdown"
 			bot.Send(msg)
-			prompt += fmt.Sprintf(" %s%s", response, eosToken)
+			prompt += fmt.Sprintf(" %s%s[INST]", response, eosToken)
 
 		}
+
+		println(prompt)
 
 	}
 
