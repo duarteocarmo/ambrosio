@@ -19,6 +19,7 @@ import (
 
 const (
 	TogetherEndpoint = "https://api.together.xyz/inference"
+	ChatEndpoint     = "https://api.together.xyz/v1/chat/completions"
 	ModelID          = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 	PhotoGenModelID  = "stabilityai/stable-diffusion-xl-base-1.0"
 	ChatMode         = "chat"
@@ -27,12 +28,15 @@ const (
 	ResetCommand     = "reset"
 )
 
-type APIResponse struct {
-	Output struct {
-		Choices []struct {
-			Text string `json:"text"`
-		} `json:"choices"`
-	} `json:"output"`
+type Message struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+type ApiResponse struct {
+	Choices []struct {
+		Message `json:"message"`
+	} `json:"choices"`
 }
 
 type ApiPhotoGenResponse struct {
@@ -41,6 +45,18 @@ type ApiPhotoGenResponse struct {
 			Image string `json:"image_base64"`
 		} `json:"choices"`
 	} `json:"output"`
+}
+
+type ApiRequest struct {
+	Model             string    `json:"model"`
+	MaxTokens         int       `json:"max_tokens"`
+	Stop              []string  `json:"stop"`
+	Temperature       float32   `json:"temperature"`
+	TopP              float32   `json:"top_p"`
+	TopK              int       `json:"top_k"`
+	RepetitionPenalty float32   `json:"repetition_penalty"`
+	N                 int       `json:"n"`
+	Messages          []Message `json:"messages"`
 }
 
 func AssistantMode(currentUpdate tgbotapi.Update, updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI) error {
@@ -93,10 +109,8 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 		return err
 	}
 
-	bosToken := "<s>"
-	eosToken := "</s>"
-	promptStart := "%s[INST] %s"
-	prompt := fmt.Sprintf(promptStart, bosToken, systemPrompt)
+	messages := []Message{}
+	messages = append(messages, Message{Role: "system", Content: systemPrompt})
 
 	for update := range updates {
 
@@ -113,32 +127,29 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 		}
 
 		if strings.ToLower(messageText) == ResetCommand {
-			prompt = fmt.Sprintf(promptStart, bosToken, systemPrompt)
+			messages = []Message{}
+			messages = append(messages, Message{Role: "system", Content: systemPrompt})
 			bot.Send(tgbotapi.NewMessage(chatID, "* Prompt reset *"))
 			continue
 		}
 
-		prompt += fmt.Sprintf(" %s [/INST]", messageText)
+		messages = append(messages, Message{Role: "user", Content: messageText})
 
 		bot.Send(tgbotapi.NewChatAction(chatID, "typing"))
 
-		response, err := makeChatRequest(
-			prompt,
-			ModelID,
-			false,
+		assistantMessage, err := makeChatRequest(
+			messages,
 		)
 
 		if err != nil {
 			bot.Send(tgbotapi.NewMessage(chatID, fmt.Sprintf("Error: %v", err)))
 		} else {
-			msg := tgbotapi.NewMessage(chatID, response)
+			msg := tgbotapi.NewMessage(chatID, assistantMessage.Content)
 			msg.ParseMode = "Markdown"
 			bot.Send(msg)
-			prompt += fmt.Sprintf(" %s%s[INST]", response, eosToken)
+			messages = append(messages, assistantMessage)
 
 		}
-
-		println(prompt)
 
 	}
 
@@ -146,58 +157,43 @@ func chatFlow(updates tgbotapi.UpdatesChannel, bot *tgbotapi.BotAPI, chatID int6
 }
 
 func makeChatRequest(
-	prompt string,
-	modelID string,
-	streamTokens bool,
-) (string, error) {
+	messages []Message,
+) (Message, error) {
 
-	defaultURL := TogetherEndpoint
-	maxTokens := 512
-	temperature := 0.0
-	topP := 0.7
-	topK := 50
-	repetitionPenalty := 1.0
+	apiRequest := ApiRequest{
+		Model:             "mistralai/Mixtral-8x7B-Instruct-v0.1",
+		MaxTokens:         512,
+		Stop:              []string{"</s>", "[/INST]"},
+		Temperature:       0.0,
+		TopP:              0.7,
+		TopK:              50,
+		RepetitionPenalty: 1,
+		N:                 1,
+		Messages:          messages,
+	}
+
 	apiKey := os.Getenv("TOGETHER_API_KEY")
-	stop := []string{"</s>", "[INST]"}
-
-	// negativePrompt := ""
-	// requestType := "language-model-inference"
 
 	if apiKey == "" {
-		return "", fmt.Errorf("TOGETHER_API_KEY environment variable not set")
+		return Message{}, fmt.Errorf("TOGETHER_API_KEY environment variable not set")
 	}
 
-	payload := map[string]interface{}{
-		"model":              modelID,
-		"prompt":             prompt,
-		"temperature":        temperature,
-		"top_p":              topP,
-		"top_k":              topK,
-		"max_tokens":         maxTokens,
-		"repetition_penalty": repetitionPenalty,
-		"stop":               stop,
-
-		// "stream_tokens":      streamTokens,
-		// "negative_prompt":    negativePrompt,
-		// "sessionKey":         sessionKey,
-	}
-
-	body, err := sendPostRequest(payload, apiKey, defaultURL)
+	body, err := sendPostRequest(apiRequest, apiKey, ChatEndpoint)
 	if err != nil {
-		return "", err
+		return Message{}, err
 	}
 
-	var apiResponse APIResponse
+	var apiResponse ApiResponse
 	err = json.Unmarshal(body, &apiResponse)
 	if err != nil {
-		return "", err
+		return Message{}, err
 	}
 
-	if len(apiResponse.Output.Choices) > 0 {
-		return apiResponse.Output.Choices[0].Text, nil
+	if len(apiResponse.Choices) > 0 {
+		return apiResponse.Choices[0].Message, nil
 	}
 
-	return "", fmt.Errorf("no choices found in the response")
+	return Message{}, fmt.Errorf("no choices found in the response")
 
 }
 
@@ -301,14 +297,13 @@ func sendPostRequest(payload interface{}, apiKey, defaultURL string) ([]byte, er
 		return nil, err
 	}
 
-	log.Printf("Request payload: %s", string(bytesPayload))
-
 	req, err := http.NewRequest("POST", defaultURL, bytes.NewReader(bytesPayload))
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+apiKey)
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Accept", "application/json")
 
 	client := &http.Client{}
 	resp, err := client.Do(req)
