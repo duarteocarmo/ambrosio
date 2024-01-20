@@ -161,7 +161,7 @@ func makeChatRequest(
 ) (Message, error) {
 
 	apiRequest := ApiRequest{
-		Model:             "mistralai/Mixtral-8x7B-Instruct-v0.1",
+		Model:             ModelID,
 		MaxTokens:         512,
 		Stop:              []string{"</s>", "[/INST]"},
 		Temperature:       0.0,
