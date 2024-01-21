@@ -22,6 +22,7 @@ const (
 	ChatEndpoint     = "https://api.together.xyz/v1/chat/completions"
 	ModelID          = "mistralai/Mixtral-8x7B-Instruct-v0.1"
 	PhotoGenModelID  = "stabilityai/stable-diffusion-xl-base-1.0"
+	// PhotoGenModelID  = "stabilityai/stable-diffusion-2-1"
 	ChatMode         = "chat"
 	PhotoGenMode     = "photo"
 	ExitCommand      = "exit"
